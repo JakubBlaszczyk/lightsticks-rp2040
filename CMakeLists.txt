@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.12)
+include(pico_sdk_import.cmake)
+project(NewProject)
+pico_sdk_init()
+
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/generated)
+pico_generate_pio_header(NewProject ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/generated)
+
+add_executable(NewProject main.c)
+target_link_libraries(NewProject pico_stdlib)
+target_link_libraries(NewProject hardware_pwm)
+target_link_libraries(NewProject hardware_uart)
+target_link_libraries(NewProject hardware_watchdog)
+target_link_libraries(NewProject hardware_pio)
+pico_add_extra_outputs(NewProject)
+pico_enable_stdio_usb(NewProject 1)
+pico_enable_stdio_uart(NewProject 0)
