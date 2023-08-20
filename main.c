@@ -6,50 +6,190 @@
 #include <hardware/pio.h>
 #include <hardware/irq.h>
 #include <hardware/dma.h>
+#include <hardware/xosc.h>
+#include <hardware/clocks.h>
+#include <hardware/rtc.h>
 #include "ws2812.pio.h"
+#include "Common.h"
+#include "Leds.h"
+#include "Effect.h"
+
+// #define LED_AMOUNT 18
+#define LED_AMOUNT 1
+#define GPIO_PIN_INDEX_LEFT 0
+#define BUTTON_PRESSED 0
+#define BUTTON_NOT_PRESSED 1
+#define IWDG_TIMEOUT 1638 // ms
+#define RESET_HOLD_TIME (uint8_t)(IWDG_TIMEOUT / 16.65)
+#define MINIMAL_HOLD_TIME (uint8_t)(400 / 16.65)
+#define MINIMAL_CLICK_TIME (uint8_t)(40 / 16.65)
+
+
+#define PRIV_LEDS_GPIO_PIN 23
+#define PRIV_USER_GPIO_PIN 24
+// #define PRIV_LEDS_GPIO_PIN 8
+// #define PRIV_USER_GPIO_PIN 7
+
+uint8_t gPinState = 0;
+uint16_t gPinHoldTime = 0;
+static const COLOR_GRB Miku = {212, 1, 59};
+static const COLOR_GRB Kaito = {9, 34, 255};
+static const COLOR_GRB Yellow = {229, 216, 0};
+static const COLOR_GRB Orange = {150, 255, 0};
+static const COLOR_GRB Red = {4, 189, 4};
+static const COLOR_GRB Luka = {105, 255, 180};
+static const COLOR_GRB Gumi = {255, 25, 25};
+static const COLOR_GRB White = {255, 255, 255};
+static const COLOR_GRB Ai = {0, 75, 130};
+static PALLETE gMikuSolidPallete[] = {{0, Miku}};
+static PALLETE gKaitoSolidPallete[] = {{0, Kaito}};
+static PALLETE gYellowSolidPallete[] = {{0, Yellow}};
+static PALLETE gOrangeSolidPallete[] = {{0, Orange}};
+static PALLETE gRedSolidPallete[] = {{0, Red}};
+static PALLETE gLukaSolidPallete[] = {{0, Luka}};
+static PALLETE gGumiSolidPallete[] = {{0, Gumi}};
+static PALLETE gWhiteSolidPallete[] = {{0, White}};
+static PALLETE gAiSolidPallete[] = {{0, Ai}};
+static PALLETE gRedTransitivePallete[] = {{0, Red}, {50, Miku}, {170, Kaito}, {255, Red}};
+static PALLETE gGreenTransitivePallete[] = {{0, Ai}, {128, White}, {255, Ai}};
+static PALLETE gBlueTransitivePallete[] = {{0, Miku}, {60, Miku}, {128, Luka}, {180, Luka}, {255, Miku}};
+static PALLETE_ARRAY gTransitivePalletes[] = {
+  {gGreenTransitivePallete, LENGTH_OF (gGreenTransitivePallete)},
+  {gBlueTransitivePallete, LENGTH_OF (gBlueTransitivePallete)},
+  {gRedTransitivePallete, LENGTH_OF (gRedTransitivePallete)}};
+static PALLETE_ARRAY gSolidPalletes[] = {
+                                        {gMikuSolidPallete, 1},
+                                        {gKaitoSolidPallete, 1},
+                                        {gYellowSolidPallete , 1},
+                                        {gOrangeSolidPallete, 1},
+                                        {gRedSolidPallete, 1},
+                                        {gLukaSolidPallete, 1},
+                                        {gGumiSolidPallete, 1},
+                                        {gWhiteSolidPallete, 1},
+                                        {gAiSolidPallete, 1}
+                                        };
+static uint8_t gEffectsIndex = 0;
+static uint8_t gPalleteIndex = 0;
+static uint8_t gTurnOff = 0;
+static bool gChanging = false;
+
+static void ShowEffectRainbowWrapper(void) {
+  ShowEffectRainbow(0, 6, 2);
+  gChanging = true;
+}
+
+static void ShowEffectPalleteSmoothTransitionWrapper(void) {
+  ShowEffectPalleteSmoothTransition(0, 1, &gTransitivePalletes[gPalleteIndex % LENGTH_OF (gTransitivePalletes)]);
+  gChanging = true;
+}
+
+static void ShowEffectPalleteInstantTransitionWrapper(void) {
+  ShowEffectPalleteInstantTransition(0, 2, &gSolidPalletes[gPalleteIndex % LENGTH_OF (gSolidPalletes)]);
+  gChanging = false;
+}
+
+static void ShowEffectBrightnessWrapper(void) {
+  ShowEffectBrightness(0, ((gPalleteIndex * 10) % 50) + MINIMAL_BRIGHTNESS);
+  gChanging = false;
+} 
+
+static void (*gEffects[])(void) = {ShowEffectPalleteInstantTransitionWrapper, ShowEffectBrightnessWrapper};
+static const uint8_t gEffectsSize = LENGTH_OF(gEffects);
+
+static void UpdatePalleteIndex() {
+  gPalleteIndex++;
+}
+
+static void UpdateEffectsIndex() {
+  gEffectsIndex++;
+}
+
+#define SHUTDOWN_ALL_MEMORIES_BITS 0xF
+
+static void shutdown_memory() {
+  *(uint32_t*)(SYSCFG_BASE) = SHUTDOWN_ALL_MEMORIES_BITS;
+}
+
+static void shutdown_processor() {
+  gpio_set_dormant_irq_enabled(PRIV_USER_GPIO_PIN, IO_BANK0_DORMANT_WAKE_INTE0_GPIO0_EDGE_HIGH_BITS, true);
+  shutdown_memory();
+  xosc_dormant();
+  gpio_acknowledge_irq(PRIV_USER_GPIO_PIN, IO_BANK0_DORMANT_WAKE_INTE0_GPIO0_EDGE_HIGH_BITS);
+  watchdog_reboot(0, 0, IWDG_TIMEOUT);
+}
+
+// static void private_sleep() {
+//   clocks_hw->sleep_en0 = CLOCKS_SLEEP_EN0_CLK_RTC_RTC_BITS;
+//   clocks_hw->sleep_en1 = 0x0;
+
+//   rtc_set_alarm(t, callback);
+
+//   uint save = scb_hw->scr;
+//   // Enable deep sleep at the proc
+//   scb_hw->scr = save | M0PLUS_SCR_SLEEPDEEP_BITS;
+
+//   // Go to sleep
+//   __wfi();
+// }
+
+static bool UpdatePinLogic(uint16_t GpioPin) {
+  uint8_t GpioPinCurrentState = gpio_get(GpioPin);
+  bool Change = false;
+  if (GpioPinCurrentState != gPinState) {
+    if (gPinState == BUTTON_PRESSED) {
+      if (gPinHoldTime < RESET_HOLD_TIME && gPinHoldTime >= MINIMAL_HOLD_TIME) {
+        UpdateEffectsIndex();
+        Change = true;
+        // printf("Effect\n\r");
+      } else if (gPinHoldTime < MINIMAL_HOLD_TIME && gPinHoldTime >= MINIMAL_CLICK_TIME) {
+        UpdatePalleteIndex();
+        Change = true;
+        // printf("Pallete\n\r");
+      }
+    } else if (gPinState == BUTTON_NOT_PRESSED) {
+      if (gPinHoldTime >= RESET_HOLD_TIME) {
+        shutdown_processor();
+      }
+      gPinHoldTime = 0;
+    }
+  } else if (GpioPinCurrentState == BUTTON_PRESSED) {
+    if (gPinHoldTime >= RESET_HOLD_TIME) {
+      Change = true;
+      gTurnOff = 1;
+    }
+    gPinHoldTime++;
+  }
+
+  gPinState = GpioPinCurrentState;
+  return Change;
+}
+
+static void UpdateLeds() {
+  if (gTurnOff) {
+    TurnOffLeds(0);
+  } else {
+    gEffects[gEffectsIndex % gEffectsSize]();
+  }
+  PrepareBufferForTransaction(0);
+}
 
 #define PRIV_WATCHDOG_TIMEOUT 1000u
-
-#define PRESCALER 1
-#define COUNTER 155
-#define HIGH_LEVEL 60
-#define LOW_LEVEL 30
 
 // #define PRIV_UART_BAUD_RATE 115200
 // #define PRIV_UART_ID uart0
 // #define PRIV_UART_TX_PIN 0
 // #define PRIV_UART_RX_PIN 1
 
-#define PRIV_LEDS_GPIO_PIN 23
-#define PRIV_USER_GPIO_PIN 24
-
-void button_callback(uint gpio, uint32_t events) {
-  printf("GPIO %d, events %d\n", gpio, events);
-}
+// void button_callback(uint gpio, uint32_t events) {
+//   printf("GPIO %d, events %d\n", gpio, events);
+// }
 
 static void initialize_button(uint8_t pin) {
   gpio_init(pin);
   gpio_set_dir(pin, GPIO_IN);
   gpio_pull_up(pin);
-  gpio_set_irq_enabled_with_callback(pin, GPIO_IRQ_EDGE_RISE, true, &button_callback);
+  // gpio_set_irq_enabled_with_callback(pin, GPIO_IRQ_EDGE_RISE, true, &button_callback);
 }
-
-#define FRAC_BITS 4
-#define NUM_PIXELS 64
-
-// static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b) {
-//     return
-//             ((uint32_t) (r) << 8) |
-//             ((uint32_t) (g) << 16) |
-//             (uint32_t) (b);
-// }
-
-// void pattern_random(uint len, uint t) {
-//     if (t % 8)
-//         return;
-//     for (int i = 0; i < len; ++i)
-//         put_pixel(rand());
-// }
 
 #define DMA_CHANNEL 0
 #define DMA_CHANNEL_MASK (1u << DMA_CHANNEL)
@@ -57,7 +197,6 @@ static void initialize_button(uint8_t pin) {
 void __isr dma_complete_handler() {
     if (dma_hw->ints0 & DMA_CHANNEL_MASK) {
         dma_hw->ints0 = DMA_CHANNEL_MASK;
-        printf("Dma transfer complete\n\r");
     }
 }
 
@@ -66,7 +205,6 @@ void dma_init(uint8_t *buffer_pointer, PIO pio, uint sm) {
 
     dma_channel_config channel_config = dma_channel_get_default_config(DMA_CHANNEL);
     channel_config_set_dreq(&channel_config, pio_get_dreq(pio, sm, true));
-    // channel_config_set_irq_quiet(&channel_config, true);
     channel_config_set_transfer_data_size(&channel_config, DMA_SIZE_8);
     dma_channel_configure(DMA_CHANNEL,
                           &channel_config,
@@ -80,63 +218,84 @@ void dma_init(uint8_t *buffer_pointer, PIO pio, uint sm) {
   irq_set_enabled(DMA_IRQ_0, true);
 }
 
-void output_strips_dma(uint8_t *buffer_pointer) {
-    // dma_channel_config channel_config = dma_get_channel_config(DMA_CHANNEL);
-    // dma_get_channel_config(DMA_CHANNEL);
+void start_dma_transfer(uint8_t *buffer_pointer) {
+  if (!dma_channel_is_busy(DMA_CHANNEL)) {
     dma_channel_set_read_addr(DMA_CHANNEL, buffer_pointer, true);
+  } else { 
+    printf("Channel busy\n\r");
+  }
 }
+
+uint8_t gLedBuffer[24 * (LED_AMOUNT + 4)];
+const uint16_t gLedBufferSize = LENGTH_OF(gLedBuffer);
+
+// single click - change color
+// single hold - change effect
+// single long (1.6s) hold - turn off
+static bool timer_callback(repeating_timer_t *t) {
+    bool Change = UpdatePinLogic(PRIV_USER_GPIO_PIN);
+    printf("Callback\n\r");
+    watchdog_update();
+    if (Change || gChanging) {
+      printf ("PalleteIndex %d\n\r", gPalleteIndex);
+      UpdateLeds();
+      start_dma_transfer(t->user_data);
+      printf("Change\n\r");
+    }
+    return true;
+}
+
+#define ALARM_NUM 0
+
+// static void alarm_in_us(uint32_t delay_us) {
+//   // Enable the interrupt for our alarm (the timer outputs 4 alarm irqs)
+//   hw_set_bits(&timer_hw->inte, 1u << ALARM_NUM);
+//   // Set irq handler for alarm irq
+//   irq_set_exclusive_handler(TIMER_IRQ_0, timer_callback);
+//   // Enable the alarm irq
+//   irq_set_enabled(TIMER_IRQ_0, true);
+//   // Enable interrupt in block and at processor
+
+//   // Alarm is only 32 bits so if trying to delay more
+//   // than that need to be careful and keep track of the upper
+//   // bits
+//   uint64_t target = timer_hw->timerawl + delay_us;
+
+//   // Write the lower 32 bits of the target time to the alarm which
+//   // will arm it
+//   timer_hw->alarm[ALARM_NUM] = (uint32_t) target;
+// }
 
 int main() {
   stdio_init_all();
   watchdog_enable(PRIV_WATCHDOG_TIMEOUT, true);
   initialize_button(PRIV_USER_GPIO_PIN);
 
-  uint8_t buffer[1024];
   PIO pio = pio0;
   int sm = 0;
   uint offset = pio_add_program(pio, &ws2812_program);
 
   ws2812_program_init(pio, sm, offset, PRIV_LEDS_GPIO_PIN, 800000, false);
 
-  dma_init(buffer, pio, sm);
+  dma_init(gLedBuffer, pio, sm);
   int t = 0;
   uint8_t value = 0;
-  while (1) {
-    for (int i = 0; i < 32; i++) {
-      buffer[i] = ((value >> (i >> (7 - (i % 8))) & 0x1);
-      printf("%d:", buffer[i]);
-    }
-    printf("\b\n\r");
-    for (int i = 32; i < 1024; i++) {
-      buffer[i] = 0;
-    }
-
-    watchdog_update();
-    // pattern_random(NUM_PIXELS, t);
-    output_strips_dma(buffer);
-    value = (value + 22) % 122;
-    dma_channel_wait_for_finish_blocking(DMA_CHANNEL);
-    printf("Value %d\n\r", value);
-    sleep_ms(500);
+  // alarm_in_us(16665);
+  repeating_timer_t timer;
+  add_repeating_timer_us(-16665, timer_callback, gLedBuffer, &timer);
+  // srand(69);
+  InitializeConfigs(1);
+  InitializeConfig(0, LED_AMOUNT, NULL, gLedBuffer, gLedBufferSize);
+  for (uint8_t Index = 0; Index < LED_AMOUNT; Index++) {
+    GetLedSection(0, Index)->Color = gSolidPalletes[0].Pallete[0].Rgb;
   }
-  // while (true) {
-    // for (int i = 0; i < 30; i++) {
-    //   printf("%d GPIO %d\n", i, gpio_get(i));
-    // }
 
-    // printf("Initialized\n");
-    // if (counter == 0) {
-    //   pwm_set_chan_level(slice, PWM_CHAN_A, HIGH_LEVEL);
-    //   counter++;
-    // } else if (counter == 1) {
-    //   pwm_set_chan_level(slice, PWM_CHAN_A, LOW_LEVEL);
-    //   counter++;
-    // } else {
-    //   pwm_set_chan_level(slice, PWM_CHAN_A, 0);
-    //   counter = 0;
-    // }
-    // watchdog_update();
-    // printf("Sending by UART\n");
-  //   sleep_ms(500);
-  // }
+  PrepareBufferForTransaction(0);
+  start_dma_transfer(gLedBuffer);
+  sleep_ms(1000);
+  while (true) {
+    tight_loop_contents();
+    sleep_ms(100000);
+    printf("Working main\n\r");
+  }
 }
