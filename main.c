@@ -9,6 +9,9 @@
 #include <hardware/xosc.h>
 #include <hardware/clocks.h>
 #include <hardware/rtc.h>
+#include <hardware/structs/scb.h>
+#include <hardware/timer.h>
+#include <hardware/sync.h>
 #include "ws2812.pio.h"
 #include "Common.h"
 #include "Leds.h"
@@ -118,19 +121,17 @@ static void shutdown_processor() {
   watchdog_reboot(0, 0, IWDG_TIMEOUT);
 }
 
-// static void private_sleep() {
-//   clocks_hw->sleep_en0 = CLOCKS_SLEEP_EN0_CLK_RTC_RTC_BITS;
-//   clocks_hw->sleep_en1 = 0x0;
+static void private_sleep() {
+  // only watchdog and timers have to work
+  clocks_hw->sleep_en1 = CLOCKS_SLEEP_EN1_CLK_SYS_TIMER_BITS | CLOCKS_SLEEP_EN1_CLK_SYS_WATCHDOG_BITS;
 
-//   rtc_set_alarm(t, callback);
+  uint save = scb_hw->scr;
+  // Enable deep sleep and sleep on exit
+  scb_hw->scr = save | M0PLUS_SCR_SLEEPDEEP_BITS | M0PLUS_SCR_SLEEPONEXIT_BITS;
 
-//   uint save = scb_hw->scr;
-//   // Enable deep sleep at the proc
-//   scb_hw->scr = save | M0PLUS_SCR_SLEEPDEEP_BITS;
-
-//   // Go to sleep
-//   __wfi();
-// }
+  // Go to sleep
+  __wfi();
+}
 
 static bool UpdatePinLogic(uint16_t GpioPin) {
   uint8_t GpioPinCurrentState = gpio_get(GpioPin);
@@ -229,9 +230,38 @@ void start_dma_transfer(uint8_t *buffer_pointer) {
 uint8_t gLedBuffer[24 * (LED_AMOUNT + 4)];
 const uint16_t gLedBufferSize = LENGTH_OF(gLedBuffer);
 
+static void set_timer_interrupt();
+static void hw_timer_callback(uint alarm_num);
+
+static void set_timer_interrupt() {
+  static uint hw_timer_num = -1;
+  if (hw_timer_num == -1) {
+    hw_timer_num = hardware_alarm_claim_unused(true);
+    hardware_alarm_set_callback(hw_timer_num, hw_timer_callback);
+  }
+
+  absolute_time_t time;
+  update_us_since_boot(&time, time_us_64() + 16600);
+  bool check = hardware_alarm_set_target(hw_timer_num, time);
+  printf("check %d\n\r", check);
+}
+
 // single click - change color
 // single hold - change effect
 // single long (1.6s) hold - turn off
+static void hw_timer_callback(uint alarm_num) {
+  bool Change = UpdatePinLogic(PRIV_USER_GPIO_PIN);
+  printf("Callback\n\r");
+  watchdog_update();
+  if (Change || gChanging) {
+    printf ("PalleteIndex %d\n\r", gPalleteIndex);
+    UpdateLeds();
+    start_dma_transfer(gLedBuffer);
+    printf("Change\n\r");
+  }
+  set_timer_interrupt();
+}
+
 static bool timer_callback(repeating_timer_t *t) {
     bool Change = UpdatePinLogic(PRIV_USER_GPIO_PIN);
     printf("Callback\n\r");
@@ -245,30 +275,8 @@ static bool timer_callback(repeating_timer_t *t) {
     return true;
 }
 
-#define ALARM_NUM 0
-
-// static void alarm_in_us(uint32_t delay_us) {
-//   // Enable the interrupt for our alarm (the timer outputs 4 alarm irqs)
-//   hw_set_bits(&timer_hw->inte, 1u << ALARM_NUM);
-//   // Set irq handler for alarm irq
-//   irq_set_exclusive_handler(TIMER_IRQ_0, timer_callback);
-//   // Enable the alarm irq
-//   irq_set_enabled(TIMER_IRQ_0, true);
-//   // Enable interrupt in block and at processor
-
-//   // Alarm is only 32 bits so if trying to delay more
-//   // than that need to be careful and keep track of the upper
-//   // bits
-//   uint64_t target = timer_hw->timerawl + delay_us;
-
-//   // Write the lower 32 bits of the target time to the alarm which
-//   // will arm it
-//   timer_hw->alarm[ALARM_NUM] = (uint32_t) target;
-// }
-
 int main() {
   stdio_init_all();
-  watchdog_enable(PRIV_WATCHDOG_TIMEOUT, true);
   initialize_button(PRIV_USER_GPIO_PIN);
 
   PIO pio = pio0;
@@ -281,8 +289,8 @@ int main() {
   int t = 0;
   uint8_t value = 0;
   // alarm_in_us(16665);
-  repeating_timer_t timer;
-  add_repeating_timer_us(-16665, timer_callback, gLedBuffer, &timer);
+  // repeating_timer_t timer;
+  // add_repeating_timer_us(-16665, timer_callback, gLedBuffer, &timer);
   // srand(69);
   InitializeConfigs(1);
   InitializeConfig(0, LED_AMOUNT, NULL, gLedBuffer, gLedBufferSize);
@@ -292,10 +300,14 @@ int main() {
 
   PrepareBufferForTransaction(0);
   start_dma_transfer(gLedBuffer);
-  sleep_ms(1000);
+  watchdog_enable(PRIV_WATCHDOG_TIMEOUT, false);
+  sleep_ms(IWDG_TIMEOUT / 2);
+  set_timer_interrupt();
+  private_sleep();
   while (true) {
-    tight_loop_contents();
-    sleep_ms(100000);
-    printf("Working main\n\r");
+    printf("0x%x 0x%x\n\r", *(uint32_t*)(CLOCKS_BASE + CLOCKS_ENABLED0_OFFSET), *(uint32_t*)(CLOCKS_BASE + CLOCKS_ENABLED1_OFFSET));
+    watchdog_update();
+    sleep_ms(IWDG_TIMEOUT / 2);
+    // printf("Working main\n\r");
   }
 }
