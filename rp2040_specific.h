@@ -1,14 +1,11 @@
 #include <stdio.h>
 #include <pico/stdlib.h>
 #include <hardware/watchdog.h>
-#include <hardware/uart.h>
-#include <hardware/pwm.h>
 #include <hardware/pio.h>
 #include <hardware/irq.h>
 #include <hardware/dma.h>
 #include <hardware/xosc.h>
 #include <hardware/clocks.h>
-#include <hardware/rtc.h>
 #include <hardware/structs/scb.h>
 #include <hardware/timer.h>
 #include <hardware/sync.h>
@@ -41,6 +38,22 @@ static void initialize_button(uint8_t pin) {
   gpio_pull_up(pin);
 }
 
+static void limit_clocks() {
+  clock_configure(clk_sys,
+                  CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLKSRC_CLK_SYS_AUX,
+                  CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
+                  SYS_CLK_KHZ * KHZ,
+                  (SYS_CLK_KHZ / 10) * KHZ);
+  clock_stop(clk_rtc);
+  clock_stop(clk_adc);
+  clock_stop(clk_peri);
+  clock_stop(clk_gpout0);
+  clock_stop(clk_gpout1);
+  clock_stop(clk_gpout2);
+  clock_stop(clk_gpout3);
+
+}
+
 static void shutdown_memory() {
   *(uint32_t*)(SYSCFG_BASE) = SHUTDOWN_ALL_MEMORIES_BITS;
 }
@@ -59,7 +72,7 @@ static void __isr dma_complete_handler() {
     }
 }
 
-static void dma_init(uint8_t *buffer_pointer, PIO pio, uint sm) {
+static void dma_init(uint8_t *buffer_pointer, uint16_t buffer_size, PIO pio, uint sm) {
     dma_claim_mask(DMA_CHANNEL_MASK);
 
     dma_channel_config channel_config = dma_channel_get_default_config(DMA_CHANNEL);
@@ -69,7 +82,7 @@ static void dma_init(uint8_t *buffer_pointer, PIO pio, uint sm) {
                           &channel_config,
                           &pio->txf[sm],
                           &buffer_pointer[0],
-                          24,
+                          buffer_size,
                           false);
 
   irq_set_exclusive_handler(DMA_IRQ_0, dma_complete_handler);
@@ -93,7 +106,7 @@ static void set_timer_interrupt(hardware_alarm_callback_t callback) {
   }
 
   absolute_time_t time;
-  update_us_since_boot(&time, time_us_64() + 16600);
+  update_us_since_boot(&time, time_us_64() + TIMER_DELAY_US);
   hardware_alarm_set_target(hw_timer_num, time);
 }
 

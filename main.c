@@ -1,14 +1,11 @@
 #include <stdio.h>
 #include <pico/stdlib.h>
 #include <hardware/watchdog.h>
-#include <hardware/uart.h>
-#include <hardware/pwm.h>
 #include <hardware/pio.h>
 #include <hardware/irq.h>
 #include <hardware/dma.h>
 #include <hardware/xosc.h>
 #include <hardware/clocks.h>
-#include <hardware/rtc.h>
 #include <hardware/structs/scb.h>
 #include <hardware/timer.h>
 #include <hardware/sync.h>
@@ -148,6 +145,9 @@ static void hw_timer_callback(uint alarm_num) {
   printf("Callback\n\r");
   watchdog_update();
   if (Change || gChanging) {
+    for (int i = 0; i < CLK_COUNT; i++) {
+      printf ("Clock %d:%d\n\r", i, clock_get_hz(i));
+    }
     printf ("PalleteIndex %d\n\r", gPalleteIndex);
     UpdateLeds();
     start_dma_transfer(gLedBuffer);
@@ -157,14 +157,16 @@ static void hw_timer_callback(uint alarm_num) {
 }
 
 int main() {
-  stdio_init_all();
+  clocks_init();
+  limit_clocks();
   initialize_button(PRIV_USER_GPIO_PIN);
+  watchdog_enable(WDG_TIMEOUT_MS, false);
 
   PIO pio = pio0;
   int sm = 0;
   uint offset = pio_add_program(pio, &ws2812_program);
   ws2812_program_init(pio, sm, offset, PRIV_LEDS_GPIO_PIN, 800000, false);
-  dma_init(gLedBuffer, pio, sm);
+  dma_init(gLedBuffer, 24 * (LED_AMOUNT + 4), pio, sm);
 
   InitializeConfigs(1);
   InitializeConfig(0, LED_AMOUNT, NULL, gLedBuffer, gLedBufferSize);
@@ -174,7 +176,6 @@ int main() {
 
   PrepareBufferForTransaction(0);
   start_dma_transfer(gLedBuffer);
-  watchdog_enable(WDG_TIMEOUT_MS, false);
   sleep_ms(WDG_TIMEOUT_MS / 2);
   set_timer_interrupt(hw_timer_callback);
   private_sleep();

@@ -2,7 +2,7 @@
 
 if ~/mount_rp2040; then
   if make -C build; then
-    sudo cp build/NewProject.uf2 /mnt/rp2040
+    sudo cp build/ligtsticks_rp2040.uf2 /mnt/rp2040
     echo "Done"
   fi
 fi
