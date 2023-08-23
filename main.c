@@ -15,11 +15,13 @@
 #include "Effect.h"
 #include "rp2040_specific.h"
 
-// #define LED_AMOUNT 18
-#define LED_AMOUNT 1
+#define LED_AMOUNT 18
+// #define LED_AMOUNT 1
 #define GPIO_PIN_INDEX_LEFT 0
 #define BUTTON_PRESSED 0
 #define BUTTON_NOT_PRESSED 1
+#define MAX_BRIGHTNESS 130
+#define BRIGHTNESS_STEP 10
 
 uint8_t gPinState = 0;
 uint16_t gPinHoldTime = 0;
@@ -61,6 +63,7 @@ static PALLETE_ARRAY gSolidPalletes[] = {
                                         };
 static uint8_t gEffectsIndex = 0;
 static uint8_t gPalleteIndex = 0;
+static uint8_t gBrightness = 8;
 static uint8_t gTurnOff = 0;
 static bool gChanging = false;
 
@@ -80,7 +83,7 @@ static void ShowEffectPalleteInstantTransitionWrapper(void) {
 }
 
 static void ShowEffectBrightnessWrapper(void) {
-  ShowEffectBrightness(0, ((gPalleteIndex * 10) % 50) + MINIMAL_BRIGHTNESS);
+  ShowEffectBrightness(0, ((gBrightness * BRIGHTNESS_STEP) % MAX_BRIGHTNESS) + MINIMAL_BRIGHTNESS);
   gChanging = false;
 } 
 
@@ -88,7 +91,11 @@ static void (*gEffects[])(void) = {ShowEffectPalleteInstantTransitionWrapper, Sh
 static const uint8_t gEffectsSize = LENGTH_OF(gEffects);
 
 static void UpdatePalleteIndex() {
-  gPalleteIndex++;
+  if (gEffects[gEffectsIndex] == ShowEffectBrightnessWrapper) {
+    gBrightness++;
+  } else {
+    gPalleteIndex++;
+  }
 }
 
 static void UpdateEffectsIndex() {

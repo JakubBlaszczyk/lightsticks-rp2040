@@ -16,8 +16,10 @@
 
 #define DMA_CHANNEL 0
 #define DMA_CHANNEL_MASK (1u << DMA_CHANNEL)
-#define PRIV_LEDS_GPIO_PIN 23
-#define PRIV_USER_GPIO_PIN 24
+// #define PRIV_LEDS_GPIO_PIN 23
+// #define PRIV_USER_GPIO_PIN 24
+#define PRIV_LEDS_GPIO_PIN 2
+#define PRIV_USER_GPIO_PIN 1
 #define SHUTDOWN_ALL_MEMORIES_BITS 0xF
 
 static void private_sleep() {
