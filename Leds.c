@@ -144,9 +144,9 @@ void TurnOffLeds(uint8_t ConfigIndex) {
   }
 }
 
-COLOR_GRB ShowEffectPalleteSmoothTransition(uint8_t ConfigIndex, uint8_t HueStep, PALLETE_ARRAY *Pallete) {
+COLOR_GRB ShowEffectPaletteSmoothTransition(uint8_t ConfigIndex, uint8_t HueStep, PALETTE_ARRAY *Palette) {
   uint8_t SectionIndex;
-  COLOR_GRB Color = GetColorFromPalleteSmooth (gHue, Pallete);
+  COLOR_GRB Color = GetColorFromPaletteSmooth (gHue, Palette);
   for (SectionIndex = 0; SectionIndex < gConfigs[ConfigIndex].SectionsSize; SectionIndex++) {
     gConfigs[ConfigIndex].Sections[SectionIndex].Color = Color;
   }
@@ -154,10 +154,10 @@ COLOR_GRB ShowEffectPalleteSmoothTransition(uint8_t ConfigIndex, uint8_t HueStep
   return gConfigs[0].Sections[0].Color;
 }
 
-void ShowEffectPalleteInstantTransition(uint8_t ConfigIndex, uint8_t HueStep, PALLETE_ARRAY *Pallete) {
+void ShowEffectPaletteInstantTransition(uint8_t ConfigIndex, uint8_t HueStep, PALETTE_ARRAY *Palette) {
   uint8_t SectionIndex;
   for (SectionIndex = 0; SectionIndex < gConfigs[ConfigIndex].SectionsSize; SectionIndex++) {
-    gConfigs[ConfigIndex].Sections[SectionIndex].Color = GetColorFromPalleteSolid (gHue, Pallete);
+    gConfigs[ConfigIndex].Sections[SectionIndex].Color = GetColorFromPaletteSolid (gHue, Palette);
   }
   gHue += HueStep;
 }

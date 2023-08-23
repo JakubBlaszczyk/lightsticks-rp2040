@@ -29,8 +29,8 @@ void TurnOffLeds(uint8_t ConfigIndex);
 void ShowEffectRainbow(uint8_t ConfigIndex, uint8_t ColorStep, uint8_t HueStep);
 void ShowEffectBrightness(uint8_t ConfigIndex, uint8_t Brightness);
 void ShowEffectFade(uint8_t ConfigIndex, uint8_t Step);
-COLOR_GRB ShowEffectPalleteSmoothTransition(uint8_t ConfigIndex, uint8_t HueStep, PALLETE_ARRAY *Pallete);
-void ShowEffectPalleteInstantTransition(uint8_t ConfigIndex, uint8_t HueStep, PALLETE_ARRAY *Pallete);
+COLOR_GRB ShowEffectPaletteSmoothTransition(uint8_t ConfigIndex, uint8_t HueStep, PALETTE_ARRAY *Pallete);
+void ShowEffectPaletteInstantTransition(uint8_t ConfigIndex, uint8_t HueStep, PALETTE_ARRAY *Pallete);
 void ShowEffectGlitter(uint8_t ConfigIndex);
 
 #endif // _LEDS_

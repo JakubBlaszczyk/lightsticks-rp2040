@@ -27,13 +27,13 @@ typedef struct
 
 typedef struct {
   uint8_t Angle;
-  COLOR_GRB Rgb;
-} PALLETE;
+  COLOR_GRB Grb;
+} PALETTE;
 
 typedef struct {
-  PALLETE *Pallete;
+  PALETTE *Palette;
   uint8_t Length;
-} PALLETE_ARRAY;
+} PALETTE_ARRAY;
 
 COLOR_GRB HsvToRgb(COLOR_HSV hsv);
 COLOR_HSV RgbToHsv(COLOR_GRB rgb);

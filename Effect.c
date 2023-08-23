@@ -3,23 +3,23 @@
 #include "Common.h"
 #include "Effect.h"
 
-COLOR_GRB GetColorFromPalleteSmooth (uint8_t Angle, PALLETE_ARRAY *PalleteArray) {
+COLOR_GRB GetColorFromPaletteSmooth (uint8_t Angle, PALETTE_ARRAY *PaletteArray) {
   uint8_t Index;
   uint8_t Found = 0;
-  PALLETE *Pallete = PalleteArray->Pallete;
-  for (Index = 0; Index < PalleteArray->Length - 1; Index++) {
-    if (Angle >= Pallete[Index].Angle && Angle < Pallete[Index + 1].Angle) {
+  PALETTE *Palette = PaletteArray->Palette;
+  for (Index = 0; Index < PaletteArray->Length - 1; Index++) {
+    if (Angle >= Palette[Index].Angle && Angle < Palette[Index + 1].Angle) {
       Found = 1;
       break;
     }
   }
 
   if (Found) {
-    COLOR_HSV First = RgbToHsv(Pallete[Index].Rgb);
-    COLOR_HSV Second = RgbToHsv(Pallete[Index + 1].Rgb);
+    COLOR_HSV First = RgbToHsv(Palette[Index].Grb);
+    COLOR_HSV Second = RgbToHsv(Palette[Index + 1].Grb);
     uint8_t a = First.h;
     uint8_t b = Second.h;
-    float t = (((float)Angle - (float)Pallete[Index].Angle) * (255.0 / ((float)Pallete[Index + 1].Angle - (float)Pallete[Index].Angle)) / 255.0);
+    float t = (((float)Angle - (float)Palette[Index].Angle) * (255.0 / ((float)Palette[Index + 1].Angle - (float)Palette[Index].Angle)) / 255.0);
     COLOR_HSV Hsv;
     Hsv.h = LerpHSV (a, b, t);
     a = First.s;
@@ -30,58 +30,50 @@ COLOR_GRB GetColorFromPalleteSmooth (uint8_t Angle, PALLETE_ARRAY *PalleteArray)
     Hsv.v = LerpHSV (a, b, t);
     return HsvToRgb(Hsv);
   } else {
-    return Pallete[Index].Rgb;
+    return Palette[Index].Grb;
   }
 }
 
-COLOR_GRB GetColorFromPalleteSolid (uint8_t Angle, PALLETE_ARRAY *PalleteArray) {
+COLOR_GRB GetColorFromPaletteSolid (uint8_t Angle, PALETTE_ARRAY *PaletteArray) {
   uint8_t Index;
-  PALLETE *Pallete = PalleteArray->Pallete;
-  for (Index = 0; Index < PalleteArray->Length - 1; Index++) {
-    if (Angle >= Pallete[Index].Angle && Angle < Pallete[Index + 1].Angle) {
+  PALETTE *Palette = PaletteArray->Palette;
+  for (Index = 0; Index < PaletteArray->Length - 1; Index++) {
+    if (Angle >= Palette[Index].Angle && Angle < Palette[Index + 1].Angle) {
       break;
     }
   }
 
-  return Pallete[Index].Rgb;
+  return Palette[Index].Grb;
 }
 
 uint8_t LerpHSV (uint8_t a, uint8_t b, float t) {
-  float tempa = (float)(a) / 255;
-  float tempb = (float)(b) / 255;
+  float FloatA = (float)(a) / 255;
+  float FloatB = (float)(b) / 255;
 
-  float tempd = (float)(b - a) / 255;
-  float h;
-  uint8_t hue;
+  float FloatD = (float)(b - a) / 255;
+  float H;
+  uint8_t Hue;
 
-  if (tempa > tempb) {
-    float temp = tempa;
-    tempa = tempb;
-    tempb = temp;
-    tempd = -tempd;
+  if (FloatA > FloatB) {
+    float temp = FloatA;
+    FloatA = FloatB;
+    FloatB = temp;
+    FloatD = -FloatD;
     t = 1 - t;
   }
 
-  if (tempd > 0.5) {
-    tempa = tempa + 1;
-    h = (tempa + t * (tempb - tempa)); // 360deg
-    while (h > 1.0) {
-      h -= 1.0;
+  if (FloatD > 0.5) {
+    FloatA = FloatA + 1;
+    H = (FloatA + t * (FloatB - FloatA)); // 360deg
+    while (H > 1.0) {
+      H -= 1.0;
     }
-    while (h < -1.0) {
-      h += 1.0;
+    while (H < -1.0) {
+      H += 1.0;
     }
-  } else if (tempd <= 0.5) {
-    h = tempa + t * tempd;
+  } else if (FloatD <= 0.5) {
+    H = FloatA + t * FloatD;
   }
-   hue = h * 255;
-  return hue;
+   Hue = H * 255;
+  return Hue;
 }
-
-// #include <stdio.h>
-
-// int main() {
-//   for (int i = 0; i < 255; i++) {
-//     printf("%d: %d\n", i, LerpHSV(0, 180, i));
-//   }
-// }
