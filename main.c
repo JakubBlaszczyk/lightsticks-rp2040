@@ -16,15 +16,16 @@
 #include "rp2040_specific.h"
 
 #define LED_AMOUNT 18
-// #define LED_AMOUNT 1
 #define GPIO_PIN_INDEX_LEFT 0
+#define GPIO_PIN_INDEX_RIGHT 1
 #define BUTTON_PRESSED 0
 #define BUTTON_NOT_PRESSED 1
 #define MAX_BRIGHTNESS 130
 #define BRIGHTNESS_STEP 10
 
-uint8_t gPinState = 0;
-uint16_t gPinHoldTime = 0;
+static const uint8_t gGpioIndexToGpioPin[2] = {PRIV_USER_GPIO_LEFT_PIN, PRIV_USER_GPIO_RIGHT_PIN};
+uint8_t gPinState[2] = {0, 0};
+uint16_t gPinHoldTime[2] = {0, 0};
 static const COLOR_GRB Miku = {212, 1, 59};
 static const COLOR_GRB Kaito = {9, 34, 255};
 static const COLOR_GRB Yellow = {229, 216, 0};
@@ -90,45 +91,57 @@ static void ShowEffectBrightnessWrapper(void) {
 static void (*gEffects[])(void) = {ShowEffectPalleteInstantTransitionWrapper, ShowEffectBrightnessWrapper};
 static const uint8_t gEffectsSize = LENGTH_OF(gEffects);
 
-static void UpdatePalleteIndex() {
+static void UpdatePalleteIndex(uint8_t GpioPinIndex) {
   if (gEffects[gEffectsIndex] == ShowEffectBrightnessWrapper) {
-    gBrightness++;
+    if (GpioPinIndex == GPIO_PIN_INDEX_LEFT) {
+      gBrightness++;
+    } else {
+      gBrightness--;
+    }
   } else {
-    gPalleteIndex++;
+    if (GpioPinIndex == GPIO_PIN_INDEX_LEFT) {
+      gPalleteIndex++;
+    } else {
+      gPalleteIndex--;
+    }
   }
 }
 
-static void UpdateEffectsIndex() {
-  gEffectsIndex++;
+static void UpdateEffectsIndex(uint8_t GpioPinIndex) {
+  if (GpioPinIndex == GPIO_PIN_INDEX_LEFT) {
+    gEffectsIndex++;
+  } else {
+    gEffectsIndex--;
+  }
 }
 
-static bool UpdatePinLogic(uint16_t GpioPin) {
-  uint8_t GpioPinCurrentState = gpio_get(GpioPin);
+static bool UpdatePinLogic(uint16_t GpioPinIndex) {
+  uint8_t GpioPinCurrentState = gpio_get(gGpioIndexToGpioPin[GpioPinIndex]);
   bool Change = false;
-  if (GpioPinCurrentState != gPinState) {
-    if (gPinState == BUTTON_PRESSED) {
-      if (gPinHoldTime < RESET_HOLD_TIME && gPinHoldTime >= MINIMAL_HOLD_TIME) {
-        UpdateEffectsIndex();
+  if (GpioPinCurrentState != gPinState[GpioPinIndex]) {
+    if (gPinState[GpioPinIndex] == BUTTON_PRESSED) {
+      if (gPinHoldTime[GpioPinIndex] < RESET_HOLD_TIME && gPinHoldTime[GpioPinIndex] >= MINIMAL_HOLD_TIME) {
+        UpdateEffectsIndex(GpioPinIndex);
         Change = true;
-      } else if (gPinHoldTime < MINIMAL_HOLD_TIME && gPinHoldTime >= MINIMAL_CLICK_TIME) {
-        UpdatePalleteIndex();
+      } else if (gPinHoldTime[GpioPinIndex] < MINIMAL_HOLD_TIME && gPinHoldTime[GpioPinIndex] >= MINIMAL_CLICK_TIME) {
+        UpdatePalleteIndex(GpioPinIndex);
         Change = true;
       }
-    } else if (gPinState == BUTTON_NOT_PRESSED) {
-      if (gPinHoldTime >= RESET_HOLD_TIME) {
+    } else if (gPinState[GpioPinIndex] == BUTTON_NOT_PRESSED) {
+      if (gPinHoldTime[GpioPinIndex] >= RESET_HOLD_TIME) {
         shutdown_processor();
       }
-      gPinHoldTime = 0;
+      gPinHoldTime[GpioPinIndex] = 0;
     }
   } else if (GpioPinCurrentState == BUTTON_PRESSED) {
-    if (gPinHoldTime >= RESET_HOLD_TIME) {
+    if (gPinHoldTime[GpioPinIndex] >= RESET_HOLD_TIME) {
       Change = true;
       gTurnOff = 1;
     }
-    gPinHoldTime++;
+    gPinHoldTime[GpioPinIndex]++;
   }
 
-  gPinState = GpioPinCurrentState;
+  gPinState[GpioPinIndex] = GpioPinCurrentState;
   return Change;
 }
 
@@ -148,17 +161,13 @@ const uint16_t gLedBufferSize = LENGTH_OF(gLedBuffer);
 // single hold - change effect
 // single long (1.6s) hold - turn off
 static void hw_timer_callback(uint alarm_num) {
-  bool Change = UpdatePinLogic(PRIV_USER_GPIO_PIN);
-  printf("Callback\n\r");
+  bool Change = UpdatePinLogic(PRIV_USER_GPIO_LEFT_PIN);
+  Change |= UpdatePinLogic(PRIV_USER_GPIO_RIGHT_PIN);
   watchdog_update();
   if (Change || gChanging) {
-    for (int i = 0; i < CLK_COUNT; i++) {
-      printf ("Clock %d:%d\n\r", i, clock_get_hz(i));
-    }
     printf ("PalleteIndex %d\n\r", gPalleteIndex);
     UpdateLeds();
     start_dma_transfer(gLedBuffer);
-    printf("Change\n\r");
   }
   set_timer_interrupt(hw_timer_callback);
 }
@@ -166,7 +175,8 @@ static void hw_timer_callback(uint alarm_num) {
 int main() {
   clocks_init();
   limit_clocks();
-  initialize_button(PRIV_USER_GPIO_PIN);
+  initialize_button(PRIV_USER_GPIO_LEFT_PIN);
+  initialize_button(PRIV_USER_GPIO_RIGHT_PIN);
   watchdog_enable(WDG_TIMEOUT_MS, false);
 
   PIO pio = pio0;

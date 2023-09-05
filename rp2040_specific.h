@@ -18,8 +18,9 @@
 #define DMA_CHANNEL_MASK (1u << DMA_CHANNEL)
 // #define PRIV_LEDS_GPIO_PIN 23
 // #define PRIV_USER_GPIO_PIN 24
-#define PRIV_LEDS_GPIO_PIN 2
-#define PRIV_USER_GPIO_PIN 1
+#define PRIV_LEDS_GPIO_PIN 4
+#define PRIV_USER_GPIO_LEFT_PIN 1
+#define PRIV_USER_GPIO_RIGHT_PIN 2
 #define SHUTDOWN_ALL_MEMORIES_BITS 0xF
 
 static void private_sleep() {
@@ -48,12 +49,12 @@ static void limit_clocks() {
                   (SYS_CLK_KHZ / 10) * KHZ);
   clock_stop(clk_rtc);
   clock_stop(clk_adc);
+  clock_stop(clk_usb);
   clock_stop(clk_peri);
   clock_stop(clk_gpout0);
   clock_stop(clk_gpout1);
   clock_stop(clk_gpout2);
   clock_stop(clk_gpout3);
-
 }
 
 static void shutdown_memory() {
@@ -61,10 +62,12 @@ static void shutdown_memory() {
 }
 
 static void shutdown_processor() {
-  gpio_set_dormant_irq_enabled(PRIV_USER_GPIO_PIN, IO_BANK0_DORMANT_WAKE_INTE0_GPIO0_EDGE_HIGH_BITS, true);
+  gpio_set_dormant_irq_enabled(PRIV_USER_GPIO_LEFT_PIN, IO_BANK0_DORMANT_WAKE_INTE0_GPIO0_EDGE_HIGH_BITS, true);
+  gpio_set_dormant_irq_enabled(PRIV_USER_GPIO_RIGHT_PIN, IO_BANK0_DORMANT_WAKE_INTE0_GPIO0_EDGE_HIGH_BITS, true);
   shutdown_memory();
   xosc_dormant();
-  gpio_acknowledge_irq(PRIV_USER_GPIO_PIN, IO_BANK0_DORMANT_WAKE_INTE0_GPIO0_EDGE_HIGH_BITS);
+  gpio_acknowledge_irq(PRIV_USER_GPIO_LEFT_PIN, IO_BANK0_DORMANT_WAKE_INTE0_GPIO0_EDGE_HIGH_BITS);
+  gpio_acknowledge_irq(PRIV_USER_GPIO_RIGHT_PIN, IO_BANK0_DORMANT_WAKE_INTE0_GPIO0_EDGE_HIGH_BITS);
   watchdog_reboot(0, 0, WDG_TIMEOUT_MS);
 }
 
